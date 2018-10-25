@@ -2,6 +2,7 @@ package com.futurice.rctaudiotoolkit;
 
 import android.content.Context;
 import android.media.AudioManager;
+import android.media.audiofx.Visualizer;
 import android.media.MediaPlayer;
 import android.media.PlaybackParams;
 import android.media.AudioAttributes;
@@ -31,6 +32,7 @@ import java.lang.Thread;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.nio.charset.StandardCharsets;
 
 public class AudioPlayerModule extends ReactContextBaseJavaModule implements MediaPlayer.OnInfoListener,
         MediaPlayer.OnErrorListener, MediaPlayer.OnCompletionListener, MediaPlayer.OnSeekCompleteListener,
@@ -189,8 +191,35 @@ public class AudioPlayerModule extends ReactContextBaseJavaModule implements Med
         }
     }
 
+    
     private void destroy(Integer playerId) {
         this.destroy(playerId, null);
+    }
+
+    @ReactMethod
+    public void levels(Integer playerId, Callback callback) {
+        MediaPlayer player = this.playerPool.get(playerId);
+
+        Visualizer visualizer = new Visualizer(player.getAudioSessionId());
+        visualizer.setEnabled(true);
+        int captureSize = visualizer.getCaptureSize();
+        byte[] fft = new byte[captureSize];
+        visualizer.getWaveForm(fft);
+        String byteData = "";
+        for(byte b: fft){
+            byteData = byteData + (int) b + ",";
+        }
+
+        if (player != null) {
+            WritableMap data = new WritableNativeMap();
+            data.putString("level", byteData);
+
+            emitEvent(playerId, "info", data);
+        }
+
+        if (callback != null) {
+            callback.invoke();
+        }
     }
 
     @ReactMethod

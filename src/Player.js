@@ -1,17 +1,24 @@
-import { NativeModules, DeviceEventEmitter, NativeAppEventEmitter, Platform } from 'react-native';
+'use strict';
+
+import {
+  NativeModules,
+  DeviceEventEmitter,
+  NativeAppEventEmitter,
+  Platform
+} from 'react-native';
 
 import _ from 'lodash';
 import async from 'async';
 import EventEmitter from 'eventemitter3';
 import MediaStates from './MediaStates';
 
-const RCTAudioPlayer = NativeModules.AudioPlayer;
+var RCTAudioPlayer = NativeModules.AudioPlayer;
 
-let playerId = 0;
+var playerId = 0;
 
-const defaultPlayerOptions = {
+var defaultPlayerOptions = {
   autoDestroy: true,
-  continuesToPlayInBackground: false,
+  continuesToPlayInBackground: false
 };
 
 /**
@@ -28,9 +35,9 @@ class Player extends EventEmitter {
     this._playerId = playerId++;
     this._reset();
 
-    const appEventEmitter = Platform.OS === 'ios' ? NativeAppEventEmitter : DeviceEventEmitter;
+    let appEventEmitter = Platform.OS === 'ios' ? NativeAppEventEmitter : DeviceEventEmitter;
 
-    appEventEmitter.addListener(`RCTAudioPlayerEvent:${this._playerId}`, (payload: Event) => {
+    appEventEmitter.addListener('RCTAudioPlayerEvent:' + this._playerId, (payload: Event) => {
       this._handleEvent(payload.event, payload.data);
     });
   }
@@ -40,6 +47,7 @@ class Player extends EventEmitter {
     this._volume = 1.0;
     this._pan = 0.0;
     this._wakeLock = false;
+    this._levels = 1;
     this._duration = -1;
     this._position = -1;
     this._lastSync = -1;
@@ -52,6 +60,7 @@ class Player extends EventEmitter {
     }
 
     this._duration = info.duration;
+    this._level = info.level;
     this._position = info.position;
     this._lastSync = Date.now();
   }
@@ -64,12 +73,12 @@ class Player extends EventEmitter {
     }
 
     // Use last truthy value from results array as new media info
-    const info = _.last(_.filter(results, _.identity));
+    let info = _.last(_.filter(results, _.identity));
     this._storeInfo(info);
   }
 
   _handleEvent(event, data) {
-    // console.log('event: ' + event + ', data: ' + JSON.stringify(data));
+    console.log('event: ' + event + ', data: ' + JSON.stringify(data));
     switch (event) {
       case 'progress':
         // TODO
@@ -83,7 +92,7 @@ class Player extends EventEmitter {
         break;
       case 'error':
         this._state = MediaStates.ERROR;
-        // this.emit('error', data);
+        //this.emit('error', data);
         break;
       case 'pause':
         this._state = MediaStates.PAUSED;
@@ -104,7 +113,7 @@ class Player extends EventEmitter {
   prepare(callback = _.noop) {
     this._updateState(null, MediaStates.PREPARING);
 
-    const tasks = [];
+    let tasks = [];
 
     // Prepare player
     tasks.push((next) => {
@@ -113,16 +122,12 @@ class Player extends EventEmitter {
 
     // Set initial values for player options
     tasks.push((next) => {
-      RCTAudioPlayer.set(
-        this._playerId,
-        {
-          volume: this._volume,
-          pan: this._pan,
-          wakeLock: this._wakeLock,
-          looping: this._looping,
-        },
-        next,
-      );
+      RCTAudioPlayer.set(this._playerId, {
+        volume: this._volume,
+        pan: this._pan,
+        wakeLock: this._wakeLock,
+        looping: this._looping
+      }, next);
     });
 
     async.series(tasks, (err, results) => {
@@ -134,10 +139,10 @@ class Player extends EventEmitter {
   }
 
   play(callback = _.noop) {
-    const tasks = [];
+    let tasks = [];
 
     // Make sure player is prepared
-    if (this._state === MediaStates.IDLE) {
+    if(this._state === MediaStates.IDLE) {
       tasks.push((next) => {
         this.prepare(next);
       });
@@ -158,10 +163,7 @@ class Player extends EventEmitter {
 
   pause(callback = _.noop) {
     RCTAudioPlayer.pause(this._playerId, (err, results) => {
-      // Android emits a pause event on the native side
-      if (Platform.OS === 'ios') {
-        this._updateState(err, MediaStates.PAUSED, [results]);
-      }
+      //this._updateState(err, MediaStates.PAUSED, [results]); // We are sending a pause event on the native side
       callback(err);
     });
 
@@ -197,6 +199,10 @@ class Player extends EventEmitter {
     RCTAudioPlayer.destroy(this._playerId, callback);
   }
 
+  levels(callback = _.noop) {
+    RCTAudioPlayer.levels(this._playerId, callback);
+  }
+
   seek(position = 0, callback = _.noop) {
     // Store old state, but not if it was already SEEKING
     if (this._state != MediaStates.SEEKING) {
@@ -215,15 +221,9 @@ class Player extends EventEmitter {
     });
   }
 
-  _setIfInitialized(options, callback = _.noop) {
-    if (this._state >= MediaStates.PREPARED) {
-      RCTAudioPlayer.set(this._playerId, options, callback);
-    }
-  }
-
   set volume(value) {
     this._volume = value;
-    this._setIfInitialized({ volume: value });
+    this._setIfInitialized({'volume': value});
   }
 
   set currentTime(value) {
@@ -232,12 +232,12 @@ class Player extends EventEmitter {
 
   set wakeLock(value) {
     this._wakeLock = value;
-    this._setIfInitialized({ wakeLock: value });
+    this._setIfInitialized({'wakeLock': value});
   }
 
   set looping(value) {
     this._looping = value;
-    this._setIfInitialized({ looping: value });
+    this._setIfInitialized({'looping': value});
   }
 
   get currentTime() {
@@ -252,44 +252,23 @@ class Player extends EventEmitter {
       pos = Math.min(pos, this._duration);
 
       return pos;
+    } else {
+      return this._position;
     }
-    return this._position;
   }
 
-  get volume() {
-    return this._volume;
-  }
-  get looping() {
-    return this._looping;
-  }
-  get duration() {
-    return this._duration;
-  }
+  get volume() { return this._volume; }
+  get looping() { return this._looping; }
+  get duration() { return this._duration; }
 
-  get state() {
-    return this._state;
-  }
-  get canPlay() {
-    return this._state >= MediaStates.PREPARED;
-  }
-  get canStop() {
-    return this._state >= MediaStates.PLAYING;
-  }
-  get canPrepare() {
-    return this._state == MediaStates.IDLE;
-  }
-  get isPlaying() {
-    return this._state == MediaStates.PLAYING;
-  }
-  get isStopped() {
-    return this._state <= MediaStates.PREPARED;
-  }
-  get isPaused() {
-    return this._state == MediaStates.PAUSED;
-  }
-  get isPrepared() {
-    return this._state == MediaStates.PREPARED;
-  }
+  get state()      { return this._state; }
+  get canPlay()    { return this._state >= MediaStates.PREPARED; }
+  get canStop()    { return this._state >= MediaStates.PLAYING;  }
+  get canPrepare() { return this._state == MediaStates.IDLE;     }
+  get isPlaying()  { return this._state == MediaStates.PLAYING;  }
+  get isStopped()  { return this._state <= MediaStates.PREPARED; }
+  get isPaused()   { return this._state == MediaStates.PAUSED;   }
+  get isPrepared() { return this._state == MediaStates.PREPARED; }
 }
 
 export default Player;
