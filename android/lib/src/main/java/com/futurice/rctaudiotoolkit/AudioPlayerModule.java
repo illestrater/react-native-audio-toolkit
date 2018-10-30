@@ -48,6 +48,8 @@ public class AudioPlayerModule extends ReactContextBaseJavaModule implements Med
     private ReactApplicationContext context;
     private AudioManager mAudioManager;
     private Integer lastPlayerId;
+    private Visualizer visualizer;
+    private int captureSize;
 
     public AudioPlayerModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -200,11 +202,12 @@ public class AudioPlayerModule extends ReactContextBaseJavaModule implements Med
     public void levels(Integer playerId, Callback callback) {
         MediaPlayer player = this.playerPool.get(playerId);
 
-        Visualizer visualizer = new Visualizer(player.getAudioSessionId());
-        visualizer.setEnabled(true);
-        int captureSize = visualizer.getCaptureSize();
+        if (player == null) {
+            return;
+        }
+
         byte[] fft = new byte[captureSize];
-        visualizer.getWaveForm(fft);
+        this.visualizer.getFft(fft);
         String byteData = "";
         for(byte b: fft){
             byteData = byteData + (int) b + ",";
@@ -214,11 +217,12 @@ public class AudioPlayerModule extends ReactContextBaseJavaModule implements Med
             WritableMap data = new WritableNativeMap();
             data.putString("level", byteData);
 
-            emitEvent(playerId, "info", data);
-        }
-
-        if (callback != null) {
-            callback.invoke();
+            if (callback != null) {
+                callback.invoke(data);
+            }
+        } else {
+            callback.invoke(errObj("notfound", "playerId " + playerId + " not found."));
+            return;
         }
     }
 
@@ -317,6 +321,10 @@ public class AudioPlayerModule extends ReactContextBaseJavaModule implements Med
 
         this.playerAutoDestroy.put(playerId, autoDestroy);
         this.playerContinueInBackground.put(playerId, continueInBackground);
+
+        this.visualizer = new Visualizer(player.getAudioSessionId());
+        this.visualizer.setEnabled(true);
+        this.captureSize = visualizer.getCaptureSize();
 
         try {
             player.prepareAsync();

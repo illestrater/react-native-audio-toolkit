@@ -78,7 +78,7 @@ class Player extends EventEmitter {
   }
 
   _handleEvent(event, data) {
-    console.log('event: ' + event + ', data: ' + JSON.stringify(data));
+    // console.log('event: ' + event + ', data: ' + JSON.stringify(data));
     switch (event) {
       case 'progress':
         // TODO
