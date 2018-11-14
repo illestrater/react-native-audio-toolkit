@@ -1,5 +1,7 @@
 package com.futurice.rctaudiotoolkit;
 
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.Context;
 import android.media.AudioManager;
 import android.media.audiofx.Visualizer;
@@ -9,10 +11,12 @@ import android.media.AudioAttributes;
 import android.media.AudioAttributes.Builder;
 import android.os.Environment;
 import android.os.PowerManager;
+import android.os.Bundle;
 import android.support.annotation.Nullable;
 import android.util.Log;
 import android.net.Uri;
 import android.content.ContextWrapper;
+import android.support.v4.content.LocalBroadcastManager;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.LifecycleEventListener;
@@ -25,6 +29,9 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
+
+import com.futurice.rctaudiotoolkit.AudioPlayerHeadless;
+import com.futurice.rctaudiotoolkit.AudioPlayerEvents;
 
 import java.io.IOException;
 import java.io.File;
@@ -50,12 +57,22 @@ public class AudioPlayerModule extends ReactContextBaseJavaModule implements Med
     private Integer lastPlayerId;
     private Visualizer visualizer;
     private int captureSize;
+    private Boolean serviceStarted = false;
+    private AudioPlayerEvents eventHandler;
+    private AudioPlayerHeadless service;
 
     public AudioPlayerModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.context = reactContext;
         reactContext.addLifecycleEventListener(this);
         this.mAudioManager = (AudioManager) this.context.getSystemService(Context.AUDIO_SERVICE);
+
+        ReactContext context = getReactApplicationContext();
+        LocalBroadcastManager manager = LocalBroadcastManager.getInstance(context);
+
+        eventHandler = new AudioPlayerEvents(context);
+        manager.registerReceiver(eventHandler, new IntentFilter("com.futurice.rctaudiotoolkit.event"));
+        service = new AudioPlayerHeadless();
     }
 
     @Override
@@ -263,6 +280,18 @@ public class AudioPlayerModule extends ReactContextBaseJavaModule implements Med
             callback.invoke(errObj("nopath", "Provided path was empty"));
             return;
         }
+
+        // Register headless task: WILL CRASH APP IF IN BACKGROUND
+        // if (!serviceStarted) {
+        //     ReactApplicationContext context = getReactApplicationContext();
+
+        //     // Binds the service to get a MediaWrapper instance
+        //     Intent intent = new Intent(context, AudioPlayerHeadless.class);
+        //     context.startService(intent);
+
+        //     serviceStarted = true;
+        // }
+        
 
         // Release old player if exists
         destroy(playerId);
@@ -515,6 +544,12 @@ public class AudioPlayerModule extends ReactContextBaseJavaModule implements Med
         } else {
             data.putString("message", "Playback completed");
             emitEvent(playerId, "ended", data);
+
+            // Emit to headless task
+            Bundle bundle = new Bundle();
+            Integer ended = 1;
+            bundle.putInt("ended", ended);
+            service.emit(AudioPlayerEvents.PLAYBACK_ENDED, bundle);
         }
 
         if (!this.looping && this.playerAutoDestroy.get(playerId)) {
